@@ -82,40 +82,48 @@ function groupByBaseTitle(events: CalendarEvent[]): Record<string, CalendarEvent
 
 /**
  * Extract the base title from an event title.
- * Acuity format: "Class Name - Attendee Name" or "Class Name: Attendee Name"
+ * Acuity format: "Attendee Name: Class Details"
  *
  * Examples:
- * - "Nose Work Class - John Smith" → "Nose Work Class"
- * - "Private Lesson: Jane Doe" → "Private Lesson"
- * - "Group Training - Sarah & Max" → "Group Training"
+ * - "Angela Cook: NOSEWORK FOUNDATION: Mondays..." → "NOSEWORK FOUNDATION: Mondays..."
+ * - "Katie Walsh: NOSEWORK FOUNDATION: Mondays..." → "NOSEWORK FOUNDATION: Mondays..."
  */
 function extractBaseTitle(fullTitle: string): string {
-  // Common separators used by scheduling software
-  const separators = [" - ", " – ", " — ", ": ", " | "];
+  // Acuity format: "Attendee Name: Class Details"
+  // The attendee name is BEFORE the first colon
+  const colonIndex = fullTitle.indexOf(": ");
+  if (colonIndex !== -1) {
+    // Return everything AFTER the first ": " as the base title
+    return fullTitle.slice(colonIndex + 2).trim();
+  }
 
+  // Fallback: try other separators at the END (legacy support)
+  const separators = [" - ", " – ", " — ", " | "];
   for (const sep of separators) {
     const parts = fullTitle.split(sep);
     if (parts.length >= 2) {
-      // Return everything before the last separator
-      // This handles "Class Name - Details - Attendee" correctly
       return parts.slice(0, -1).join(sep).trim();
     }
   }
 
-  // No separator found - return full title
   return fullTitle.trim();
 }
 
 /**
  * Extract the attendee name from a full title given the base title.
+ * Acuity format: "Attendee Name: Class Details"
  */
 function extractAttendeeName(fullTitle: string, baseTitle: string): string {
-  // Remove the base title from the beginning
+  // Acuity format: "Attendee Name: Class Details"
+  // The attendee name is BEFORE the first colon
+  const colonIndex = fullTitle.indexOf(": ");
+  if (colonIndex !== -1) {
+    return fullTitle.slice(0, colonIndex).trim();
+  }
+
+  // Fallback for other separator formats
   let remainder = fullTitle.replace(baseTitle, "").trim();
-
-  // Remove leading separators
   remainder = remainder.replace(/^[-–—:|]\s*/, "");
-
   return remainder.trim() || "Unknown";
 }
 
