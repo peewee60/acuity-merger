@@ -1,4 +1,4 @@
-import type { CalendarEvent, DuplicateGroup } from "@/types";
+import type { CalendarEvent, DuplicateGroup, SeriesGroup } from "@/types";
 
 /**
  * Detects duplicate events that can be merged.
@@ -157,4 +157,131 @@ export function formatMergedTitle(
     default:
       return buildMergedTitle(baseTitle, attendees);
   }
+}
+
+// =============================================================================
+// Series Detection
+// =============================================================================
+
+/**
+ * Detect series of events that span multiple dates.
+ * Groups events by series key (class name without dates/attendee), then merges
+ * duplicates within each date.
+ *
+ * Example: 10 events (2 attendees × 5 dates) → 1 SeriesGroup with 5 merged events
+ */
+export function detectSeries(events: CalendarEvent[]): SeriesGroup[] {
+  const seriesMap: Record<string, CalendarEvent[]> = {};
+
+  // Group events by series key
+  for (const event of events) {
+    const baseTitle = extractBaseTitle(event.title);
+    const seriesKey = extractSeriesKey(baseTitle);
+
+    if (!seriesMap[seriesKey]) {
+      seriesMap[seriesKey] = [];
+    }
+    seriesMap[seriesKey].push(event);
+  }
+
+  const seriesGroups: SeriesGroup[] = [];
+
+  for (const [seriesKey, seriesEvents] of Object.entries(seriesMap)) {
+    // Need at least 2 events to form a series
+    if (seriesEvents.length < 2) continue;
+
+    // Extract date pattern from first event
+    const firstBaseTitle = extractBaseTitle(seriesEvents[0].title);
+    const datePattern = extractDatePattern(firstBaseTitle);
+
+    // Group events by their actual date
+    const byDate = groupBy(seriesEvents, (e) => e.start.toISOString().split("T")[0]);
+
+    // Only consider it a series if there are multiple dates OR multiple attendees on same date
+    const hasMultipleDates = Object.keys(byDate).length > 1;
+    const hasMultiplePerDate = Object.values(byDate).some((evts) => evts.length > 1);
+
+    if (!hasMultipleDates && !hasMultiplePerDate) continue;
+
+    // Merge duplicates within each date
+    const eventsByDate: Record<string, DuplicateGroup> = {};
+    const allAttendees = new Set<string>();
+    const dates: Date[] = [];
+
+    for (const [dateStr, dateEvents] of Object.entries(byDate)) {
+      dates.push(new Date(dateStr));
+
+      // Extract attendees for this date
+      const attendees = dateEvents.map((e) => {
+        const name = extractAttendeeName(e.title, extractBaseTitle(e.title));
+        allAttendees.add(name);
+        return name;
+      });
+
+      // Build merged title for this date
+      const baseTitle = extractSeriesKey(extractBaseTitle(dateEvents[0].title));
+      const mergedTitle = buildMergedTitle(baseTitle, attendees);
+
+      eventsByDate[dateStr] = {
+        events: dateEvents,
+        baseTitle,
+        mergedTitle,
+        attendees,
+        startTime: dateEvents[0].start,
+      };
+    }
+
+    // Sort dates chronologically
+    dates.sort((a, b) => a.getTime() - b.getTime());
+
+    seriesGroups.push({
+      seriesKey,
+      baseTitle: seriesKey,
+      datePattern: datePattern || "",
+      dates,
+      eventsByDate,
+      allAttendees: Array.from(allAttendees),
+      allEvents: seriesEvents,
+    });
+  }
+
+  // Sort series by first date
+  seriesGroups.sort((a, b) => {
+    const aFirst = a.dates[0]?.getTime() || 0;
+    const bFirst = b.dates[0]?.getTime() || 0;
+    return aFirst - bFirst;
+  });
+
+  return seriesGroups;
+}
+
+/**
+ * Extract the series key from a base title by removing the date pattern.
+ * This allows events across different dates to be grouped together.
+ *
+ * Example:
+ * - "NOSEWORK FOUNDATION: Mondays @ 7:15pm on Dec 1-8-15-22-29 (AS) (Austin)"
+ * - → "NOSEWORK FOUNDATION: Mondays @ 7:15pm (AS) (Austin)"
+ */
+function extractSeriesKey(baseTitle: string): string {
+  // Match date patterns like "on Dec 1-8-15-22-29" or "on Jan 5-12-19-26"
+  // Also match "on December 1-8-15" etc.
+  const datePatternRegex = /\s+on\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+[\d]+([-][\d]+)*/gi;
+
+  return baseTitle.replace(datePatternRegex, "").trim();
+}
+
+/**
+ * Extract the date pattern string from a base title.
+ *
+ * Example:
+ * - "NOSEWORK FOUNDATION: Mondays @ 7:15pm on Dec 1-8-15-22-29 (AS) (Austin)"
+ * - → "Dec 1-8-15-22-29"
+ */
+function extractDatePattern(baseTitle: string): string | null {
+  const match = baseTitle.match(
+    /on\s+((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+[\d]+(?:[-][\d]+)*)/i
+  );
+
+  return match ? match[1] : null;
 }

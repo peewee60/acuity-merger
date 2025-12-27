@@ -3,10 +3,11 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
-import type { CalendarInfo, DuplicateGroup } from "@/types";
+import type { CalendarInfo, DuplicateGroup, SeriesGroup } from "@/types";
 import { CalendarSelector } from "@/components/CalendarSelector";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { DuplicateList } from "@/components/DuplicateList";
+import { SeriesList } from "@/components/SeriesList";
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
@@ -23,6 +24,7 @@ export default function DashboardPage() {
   const [endDate, setEndDate] = useState(formatDate(lastOfMonth));
 
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+  const [seriesGroups, setSeriesGroups] = useState<SeriesGroup[]>([]);
   const [totalEvents, setTotalEvents] = useState(0);
   const [scanLoading, setScanLoading] = useState(false);
   const [mergeLoading, setMergeLoading] = useState(false);
@@ -68,6 +70,7 @@ export default function DashboardPage() {
     setSuccessMessage(null);
     setScanLoading(true);
     setDuplicateGroups([]);
+    setSeriesGroups([]);
     setHasScanned(false);
 
     try {
@@ -82,12 +85,13 @@ export default function DashboardPage() {
 
       const data = await res.json();
       setDuplicateGroups(data.duplicateGroups);
+      setSeriesGroups(data.seriesGroups);
       setTotalEvents(data.totalEvents);
       setHasScanned(true);
 
-      if (data.duplicateGroups.length === 0) {
+      if (data.duplicateGroups.length === 0 && data.seriesGroups.length === 0) {
         setSuccessMessage(
-          `Scanned ${data.totalEvents} events - no duplicates found!`
+          `Scanned ${data.totalEvents} events - no duplicates or series found!`
         );
       }
     } catch (err) {
@@ -132,6 +136,43 @@ export default function DashboardPage() {
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to merge events");
+        console.error(err);
+      } finally {
+        setMergeLoading(false);
+      }
+    },
+    []
+  );
+
+  const handleMergeSeries = useCallback(
+    async (series: SeriesGroup, archiveCalendarId?: string) => {
+      setError(null);
+      setMergeLoading(true);
+
+      try {
+        const res = await fetch("/api/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            series,
+            archiveCalendarId,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Merge failed");
+        }
+
+        setSeriesGroups((prev) =>
+          prev.filter((s) => s.seriesKey !== series.seriesKey)
+        );
+
+        setSuccessMessage(
+          `Successfully merged ${series.allEvents.length} events across ${series.dates.length} dates`
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to merge series");
         console.error(err);
       } finally {
         setMergeLoading(false);
@@ -353,44 +394,64 @@ export default function DashboardPage() {
 
         {/* Results */}
         {hasScanned && (
-          <div className="glass-card-elevated rounded-2xl p-6 animate-fade-in-up">
-            {duplicateGroups.length > 0 ? (
-              <DuplicateList
-                groups={duplicateGroups}
-                calendars={calendars}
-                onMerge={handleMerge}
-                isLoading={mergeLoading}
-              />
-            ) : (
-              <div className="text-center py-12">
-                <div
-                  className="mx-auto mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center"
-                  style={{ width: "64px", height: "64px" }}
-                >
-                  <svg
-                    className="text-emerald-400"
-                    style={{ width: "32px", height: "32px" }}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
+          <div className="flex flex-col gap-6 animate-fade-in-up">
+            {/* Series Groups */}
+            {seriesGroups.length > 0 && (
+              <div className="glass-card-elevated rounded-2xl p-6">
+                <SeriesList
+                  series={seriesGroups}
+                  calendars={calendars}
+                  onMergeSeries={handleMergeSeries}
+                  isLoading={mergeLoading}
+                />
+              </div>
+            )}
+
+            {/* Duplicate Groups (single-date) */}
+            {duplicateGroups.length > 0 && (
+              <div className="glass-card-elevated rounded-2xl p-6">
+                <DuplicateList
+                  groups={duplicateGroups}
+                  calendars={calendars}
+                  onMerge={handleMerge}
+                  isLoading={mergeLoading}
+                />
+              </div>
+            )}
+
+            {/* No results */}
+            {duplicateGroups.length === 0 && seriesGroups.length === 0 && (
+              <div className="glass-card-elevated rounded-2xl p-6">
+                <div className="text-center py-12">
+                  <div
+                    className="mx-auto mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center"
+                    style={{ width: "64px", height: "64px" }}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                    <svg
+                      className="text-emerald-400"
+                      style={{ width: "32px", height: "32px" }}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <p
+                    className="text-xl font-semibold text-slate-50 mb-2"
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    No duplicates found
+                  </p>
+                  <p className="text-slate-400">
+                    Scanned {totalEvents} events in the selected date range
+                  </p>
                 </div>
-                <p
-                  className="text-xl font-semibold text-slate-50 mb-2"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
-                  No duplicates found
-                </p>
-                <p className="text-slate-400">
-                  Scanned {totalEvents} events in the selected date range
-                </p>
               </div>
             )}
           </div>

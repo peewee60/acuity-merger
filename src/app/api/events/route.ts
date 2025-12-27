@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getEvents } from "@/lib/google-calendar";
-import { detectDuplicates } from "@/lib/duplicate-detector";
+import { detectDuplicates, detectSeries } from "@/lib/duplicate-detector";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -30,15 +30,23 @@ export async function GET(request: NextRequest) {
       new Date(endDate)
     );
 
-    // Detect duplicates
+    // Detect duplicates (same time, same class)
     const duplicateGroups = detectDuplicates(events);
+
+    // Detect series (same class across multiple dates)
+    const seriesGroups = detectSeries(events);
 
     return NextResponse.json({
       events,
       duplicateGroups,
+      seriesGroups,
       totalEvents: events.length,
       duplicateCount: duplicateGroups.reduce(
         (sum, g) => sum + g.events.length,
+        0
+      ),
+      seriesCount: seriesGroups.reduce(
+        (sum, s) => sum + s.allEvents.length,
         0
       ),
     });

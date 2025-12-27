@@ -27,10 +27,32 @@ export interface DuplicateGroup {
   startTime: Date;
 }
 
+// A series of related events across multiple dates
+export interface SeriesGroup {
+  seriesKey: string;              // Unique key for this series (title without dates/attendee)
+  baseTitle: string;              // Class name without dates (for display)
+  datePattern: string;            // Original pattern like "Dec 1-8-15-22-29"
+  dates: Date[];                  // Parsed dates from the series
+  eventsByDate: Record<string, DuplicateGroup>;  // Merged events per date (ISO date string key)
+  allAttendees: string[];         // All unique attendees across series
+  allEvents: CalendarEvent[];     // All original events in this series
+}
+
 // Result of merge operation
 export interface MergeResult {
   success: boolean;
   createdEventId?: string;
+  movedCount: number;
+  deletedCount: number;
+  error?: string;
+}
+
+// Result of series merge operation
+export interface SeriesMergeResult {
+  success: boolean;
+  createdEventIds: string[];  // One per date merged
+  mergedDates: number;        // Number of dates successfully merged
+  totalEventsProcessed: number;
   movedCount: number;
   deletedCount: number;
   error?: string;

@@ -193,6 +193,12 @@ select.input-field option {
   border: 1px solid rgba(244, 63, 94, 0.2);
 }
 
+.badge-violet {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
 /* Alerts */
 .alert {
   border-radius: 12px;
