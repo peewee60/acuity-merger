@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState(false);
+  const [activeTab, setActiveTab] = useState<"series" | "duplicates">("series");
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -395,32 +396,8 @@ export default function DashboardPage() {
         {/* Results */}
         {hasScanned && (
           <div className="flex flex-col gap-6 animate-fade-in-up">
-            {/* Series Groups */}
-            {seriesGroups.length > 0 && (
-              <div className="glass-card-elevated rounded-2xl p-6">
-                <SeriesList
-                  series={seriesGroups}
-                  calendars={calendars}
-                  onMergeSeries={handleMergeSeries}
-                  isLoading={mergeLoading}
-                />
-              </div>
-            )}
-
-            {/* Duplicate Groups (single-date) */}
-            {duplicateGroups.length > 0 && (
-              <div className="glass-card-elevated rounded-2xl p-6">
-                <DuplicateList
-                  groups={duplicateGroups}
-                  calendars={calendars}
-                  onMerge={handleMerge}
-                  isLoading={mergeLoading}
-                />
-              </div>
-            )}
-
             {/* No results */}
-            {duplicateGroups.length === 0 && seriesGroups.length === 0 && (
+            {duplicateGroups.length === 0 && seriesGroups.length === 0 ? (
               <div className="glass-card-elevated rounded-2xl p-6">
                 <div className="text-center py-12">
                   <div
@@ -453,6 +430,103 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </div>
+            ) : (
+              <>
+                {/* Tab Navigation */}
+                <div className="flex gap-2 p-1 bg-slate-800/50 rounded-xl border border-slate-700/50">
+                  <button
+                    onClick={() => setActiveTab("series")}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                      activeTab === "series"
+                        ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                        : "text-slate-400 hover:text-slate-300 hover:bg-slate-700/30 border border-transparent"
+                    }`}
+                  >
+                    <svg
+                      style={{ width: "18px", height: "18px" }}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+                      />
+                    </svg>
+                    Series
+                    {seriesGroups.length > 0 && (
+                      <span className="badge badge-violet text-xs">
+                        {seriesGroups.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("duplicates")}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                      activeTab === "duplicates"
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                        : "text-slate-400 hover:text-slate-300 hover:bg-slate-700/30 border border-transparent"
+                    }`}
+                  >
+                    <svg
+                      style={{ width: "18px", height: "18px" }}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"
+                      />
+                    </svg>
+                    Duplicates
+                    {duplicateGroups.length > 0 && (
+                      <span className="badge badge-amber text-xs">
+                        {duplicateGroups.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="glass-card-elevated rounded-2xl p-6">
+                  {activeTab === "series" ? (
+                    seriesGroups.length > 0 ? (
+                      <SeriesList
+                        series={seriesGroups}
+                        calendars={calendars}
+                        onMergeSeries={handleMergeSeries}
+                        isLoading={mergeLoading}
+                      />
+                    ) : (
+                      <div className="text-center py-8 text-slate-400">
+                        <p>No event series found</p>
+                        <p className="text-sm mt-1">
+                          Series are events that repeat across multiple dates
+                        </p>
+                      </div>
+                    )
+                  ) : duplicateGroups.length > 0 ? (
+                    <DuplicateList
+                      groups={duplicateGroups}
+                      calendars={calendars}
+                      onMerge={handleMerge}
+                      isLoading={mergeLoading}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-slate-400">
+                      <p>No duplicate events found</p>
+                      <p className="text-sm mt-1">
+                        Duplicates are multiple events at the same time
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}

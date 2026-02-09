@@ -30,11 +30,17 @@ export async function GET(request: NextRequest) {
       new Date(endDate)
     );
 
-    // Detect duplicates (same time, same class)
-    const duplicateGroups = detectDuplicates(events);
-
-    // Detect series (same class across multiple dates)
+    // Detect series first (same class across multiple dates)
     const seriesGroups = detectSeries(events);
+
+    // Collect all event IDs that are part of a series
+    const seriesEventIds = new Set(
+      seriesGroups.flatMap((s) => s.allEvents.map((e) => e.id))
+    );
+
+    // Detect duplicates only from non-series events
+    const nonSeriesEvents = events.filter((e) => !seriesEventIds.has(e.id));
+    const duplicateGroups = detectDuplicates(nonSeriesEvents);
 
     return NextResponse.json({
       events,

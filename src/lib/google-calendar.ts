@@ -44,8 +44,11 @@ export async function getEvents(
   const calendarInfo = await calendar.calendars.get({ calendarId });
   const calendarName = calendarInfo.data.summary || "Calendar";
 
+  const ACUITY_MARKER = "(created by Acuity Scheduling)";
+
   return (response.data.items || [])
     .filter((item) => item.status !== "cancelled")
+    .filter((item) => item.description?.includes(ACUITY_MARKER))
     .map((item) => convertEvent(item, calendarId, calendarName));
 }
 
