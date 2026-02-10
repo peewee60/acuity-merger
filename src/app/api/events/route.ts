@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-error";
 import { getEvents } from "@/lib/google-calendar";
 import { detectDuplicates, detectSeries } from "@/lib/duplicate-detector";
 import { NextRequest, NextResponse } from "next/server";
@@ -59,10 +60,6 @@ export async function GET(request: NextRequest) {
       ),
     });
   } catch (error) {
-    console.error("Failed to fetch events:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch events" },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch events");
   }
 }

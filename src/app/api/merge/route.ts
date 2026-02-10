@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-error";
 import { executeMerge, executeSeriesMerge, markOriginals } from "@/lib/merge-executor";
 import type { DuplicateGroup, SeriesGroup } from "@/types";
 import { after, NextRequest, NextResponse } from "next/server";
@@ -117,10 +118,6 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error("Merge failed:", error);
-    return NextResponse.json(
-      { error: "Failed to execute merge" },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to execute merge");
   }
 }

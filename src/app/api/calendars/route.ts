@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { handleApiError } from "@/lib/api-error";
 import { listCalendars } from "@/lib/google-calendar";
 import { NextResponse } from "next/server";
 
@@ -13,10 +14,6 @@ export async function GET() {
     const calendars = await listCalendars(session.accessToken);
     return NextResponse.json(calendars);
   } catch (error) {
-    console.error("Failed to list calendars:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch calendars" },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch calendars");
   }
 }
