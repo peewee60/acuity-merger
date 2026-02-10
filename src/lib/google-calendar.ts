@@ -129,7 +129,7 @@ export async function createEvent(
   return response.data.id || "";
 }
 
-// Create a recurring event using RDATE (explicit date list)
+// Create a recurring event with RRULE recurrence
 export async function createRecurringEvent(
   accessToken: string,
   calendarId: string,
