@@ -35,6 +35,8 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<"series" | "duplicates">("series");
   const [showMerged, setShowMerged] = useState(false);
 
+  const sessionError = session?.error;
+
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/");
@@ -47,13 +49,16 @@ export default function DashboardPage() {
     async function fetchCalendars() {
       try {
         const res = await fetch("/api/calendars");
-        if (!res.ok) throw new Error("Failed to fetch calendars");
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to fetch calendars");
+        }
         const data = await res.json();
         setCalendars(data);
         const primary = data.find((c: CalendarInfo) => c.primary);
         if (primary) setSelectedCalendarId(primary.id);
       } catch (err) {
-        setError("Failed to load calendars");
+        setError(err instanceof Error ? err.message : "Failed to load calendars");
         console.error(err);
       } finally {
         setCalendarsLoading(false);
@@ -85,7 +90,10 @@ export default function DashboardPage() {
       });
 
       const res = await fetch(`/api/events?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch events");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to fetch events");
+      }
 
       const data = await res.json();
       setDuplicateGroups(data.duplicateGroups);
@@ -99,7 +107,7 @@ export default function DashboardPage() {
         );
       }
     } catch (err) {
-      setError("Failed to scan for duplicates");
+      setError(err instanceof Error ? err.message : "Failed to scan for duplicates");
       console.error(err);
     } finally {
       setScanLoading(false);
@@ -222,6 +230,53 @@ export default function DashboardPage() {
 
   if (status !== "authenticated") {
     return null;
+  }
+
+  if (sessionError === "RefreshAccessTokenError") {
+    return (
+      <div className="min-h-screen bg-mesh flex items-center justify-center p-6">
+        <div className="glass-card-elevated rounded-3xl p-10 max-w-md w-full animate-fade-in-up">
+          <div className="flex justify-center mb-6">
+            <div
+              className="rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center"
+              style={{ width: "64px", height: "64px" }}
+            >
+              <svg
+                className="text-amber-400"
+                style={{ width: "32px", height: "32px" }}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                />
+              </svg>
+            </div>
+          </div>
+          <div className="text-center mb-8">
+            <h2
+              className="text-xl font-semibold text-slate-50 mb-2"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Session expired
+            </h2>
+            <p className="text-slate-400 text-sm">
+              Your Google access has expired. Please sign in again to continue.
+            </p>
+          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="w-full btn-primary py-3 px-5 rounded-xl text-base cursor-pointer"
+          >
+            Sign in again
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
