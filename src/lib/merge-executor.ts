@@ -1,27 +1,24 @@
 import type { DuplicateGroup, MergeResult, SeriesGroup, SeriesMergeResult } from "@/types";
-import { createEvent, deleteEvent, moveEvent } from "./google-calendar";
+import { createEvent, createRecurringEvent, markEventAsMerged } from "./google-calendar";
 
 /**
  * Execute a merge operation:
- * 1. Create the merged event
- * 2. Move or delete the original events
+ * 1. Create the merged event on the target calendar
+ * 2. Mark all originals as merged (keeps them in place so Acuity won't re-create)
  */
 export async function executeMerge(
   accessToken: string,
   group: DuplicateGroup,
   options: {
-    archiveCalendarId?: string;
+    targetCalendarId: string;
     customTitle?: string;
-  } = {}
+  }
 ): Promise<MergeResult> {
-  const { archiveCalendarId, customTitle } = options;
-
-  // Use the first event's calendar as the target
-  const targetCalendarId = group.events[0].calendarId;
+  const { targetCalendarId, customTitle } = options;
   const firstEvent = group.events[0];
 
   try {
-    // 1. Create the merged event
+    // 1. Create the merged event on the target calendar
     const createdEventId = await createEvent(accessToken, targetCalendarId, {
       title: customTitle || group.mergedTitle,
       description: buildMergedDescription(group),
@@ -30,50 +27,28 @@ export async function executeMerge(
       allDay: firstEvent.allDay,
     });
 
-    // 2. Handle original events
-    let movedCount = 0;
-    let deletedCount = 0;
-
+    // 2. Mark all originals as merged
+    let markedCount = 0;
     for (const original of group.events) {
       try {
-        if (archiveCalendarId) {
-          // Move to archive calendar
-          await moveEvent(
-            accessToken,
-            original.calendarId,
-            original.id,
-            archiveCalendarId
-          );
-          movedCount++;
-        } else {
-          // Delete the original
-          await deleteEvent(accessToken, original.calendarId, original.id);
-          deletedCount++;
-        }
-      } catch (error) {
-        // If move fails, try to delete instead
-        if (archiveCalendarId) {
-          try {
-            await deleteEvent(accessToken, original.calendarId, original.id);
-            deletedCount++;
-          } catch {
-            // Ignore - event might already be gone
-          }
-        }
+        console.log(`Marking event ${original.id} on calendar ${original.calendarId} as merged...`);
+        await markEventAsMerged(accessToken, original.calendarId, original.id);
+        markedCount++;
+        console.log(`  -> Marked successfully`);
+      } catch (err) {
+        console.error(`  -> Failed to mark event ${original.id}:`, err);
       }
     }
 
     return {
       success: true,
       createdEventId,
-      movedCount,
-      deletedCount,
+      markedCount,
     };
   } catch (error) {
     return {
       success: false,
-      movedCount: 0,
-      deletedCount: 0,
+      markedCount: 0,
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
@@ -96,107 +71,135 @@ function buildMergedDescription(group: DuplicateGroup): string {
 }
 
 /**
+ * Build RDATE recurrence values for dates after the first.
+ * Returns e.g. ["RDATE:20241208T191500Z,20241215T191500Z"]
+ * Returns empty array if only 1 date (no recurrence needed).
+ */
+function buildRecurrenceRDates(
+  sortedDates: Date[],
+  referenceEvent: { start: Date }
+): string[] {
+  if (sortedDates.length <= 1) return [];
+
+  // Extract the time portion from the reference event
+  const refTime = referenceEvent.start;
+  const hours = refTime.getUTCHours().toString().padStart(2, "0");
+  const minutes = refTime.getUTCMinutes().toString().padStart(2, "0");
+  const seconds = refTime.getUTCSeconds().toString().padStart(2, "0");
+  const timePart = `T${hours}${minutes}${seconds}Z`;
+
+  // Build RDATE values for all dates after the first
+  const rdateValues = sortedDates.slice(1).map((d) => {
+    const year = d.getUTCFullYear();
+    const month = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+    const day = d.getUTCDate().toString().padStart(2, "0");
+    return `${year}${month}${day}${timePart}`;
+  });
+
+  return [`RDATE:${rdateValues.join(",")}`];
+}
+
+/**
  * Execute a series merge operation:
- * 1. For each date in the series, create a merged event with all attendees for that date
- * 2. Move or delete all original events
+ * 1. Create a single recurring event with RDATE rules covering all dates
+ * 2. Mark all originals as merged
  */
 export async function executeSeriesMerge(
   accessToken: string,
   series: SeriesGroup,
-  options: {
-    archiveCalendarId?: string;
-  } = {}
+  targetCalendarId: string
 ): Promise<SeriesMergeResult> {
-  const { archiveCalendarId } = options;
+  let markedCount = 0;
 
-  const createdEventIds: string[] = [];
-  let movedCount = 0;
-  let deletedCount = 0;
-  let mergedDates = 0;
+  // Sort dates chronologically
+  const sortedDateStrs = Object.keys(series.eventsByDate).sort();
+  const sortedDates = sortedDateStrs.map((d) => new Date(d + "T00:00:00Z"));
 
-  // Use the first event's calendar as the target
-  const targetCalendarId = series.allEvents[0].calendarId;
+  // Use first date's group as anchor
+  const firstGroup = series.eventsByDate[sortedDateStrs[0]];
+  const anchorEvent = firstGroup.events[0];
+
+  // Build combined description with all attendees and per-date breakdown
+  const descriptionLines = [
+    `Recurring series: ${series.baseTitle}`,
+    `${series.dates.length} dates | ${series.allAttendees.length} attendees`,
+    "",
+    "Attendees:",
+    ...series.allAttendees.map((name, i) => `  ${i + 1}. ${name}`),
+    "",
+    "Per-date breakdown:",
+    ...sortedDateStrs.map((dateStr) => {
+      const group = series.eventsByDate[dateStr];
+      const d = new Date(dateStr + "T12:00:00");
+      const dateLabel = d.toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      return `  ${dateLabel}: ${group.attendees.join(", ")}`;
+    }),
+    "",
+    `Series dates: ${series.datePattern}`,
+    `Merged on: ${new Date().toLocaleDateString()}`,
+  ];
+
+  const mergedTitle = `${series.baseTitle} (${series.allAttendees.length} attendees)`;
 
   try {
-    // Process each date in the series
-    for (const [dateStr, group] of Object.entries(series.eventsByDate)) {
-      const firstEvent = group.events[0];
+    // Build recurrence rules
+    const recurrence = buildRecurrenceRDates(sortedDates, anchorEvent);
 
-      // Create a merged event for this date
-      const createdEventId = await createEvent(accessToken, targetCalendarId, {
-        title: group.mergedTitle,
-        description: buildSeriesDateDescription(group, series),
-        start: firstEvent.start,
-        end: firstEvent.end,
-        allDay: firstEvent.allDay,
-      });
+    // Create the recurring event (or single event if only 1 date)
+    let createdEventId: string;
+    const eventData = {
+      title: mergedTitle,
+      description: descriptionLines.join("\n"),
+      start: anchorEvent.start,
+      end: anchorEvent.end,
+      allDay: anchorEvent.allDay,
+    };
 
-      createdEventIds.push(createdEventId);
-      mergedDates++;
+    if (recurrence.length > 0) {
+      createdEventId = await createRecurringEvent(
+        accessToken,
+        targetCalendarId,
+        eventData,
+        recurrence
+      );
+    } else {
+      createdEventId = await createEvent(
+        accessToken,
+        targetCalendarId,
+        eventData
+      );
+    }
 
-      // Handle original events for this date
-      for (const original of group.events) {
-        try {
-          if (archiveCalendarId) {
-            await moveEvent(
-              accessToken,
-              original.calendarId,
-              original.id,
-              archiveCalendarId
-            );
-            movedCount++;
-          } else {
-            await deleteEvent(accessToken, original.calendarId, original.id);
-            deletedCount++;
-          }
-        } catch (error) {
-          // If move fails, try to delete instead
-          if (archiveCalendarId) {
-            try {
-              await deleteEvent(accessToken, original.calendarId, original.id);
-              deletedCount++;
-            } catch {
-              // Ignore - event might already be gone
-            }
-          }
-        }
+    // Mark all originals as merged
+    for (const original of series.allEvents) {
+      try {
+        console.log(`Marking event ${original.id} on calendar ${original.calendarId} as merged...`);
+        await markEventAsMerged(accessToken, original.calendarId, original.id);
+        markedCount++;
+        console.log(`  -> Marked successfully`);
+      } catch (err) {
+        console.error(`  -> Failed to mark event ${original.id}:`, err);
       }
     }
 
     return {
       success: true,
-      createdEventIds,
-      mergedDates,
+      createdEventId,
+      mergedDates: sortedDates.length,
       totalEventsProcessed: series.allEvents.length,
-      movedCount,
-      deletedCount,
+      markedCount,
     };
   } catch (error) {
     return {
       success: false,
-      createdEventIds,
-      mergedDates,
+      mergedDates: 0,
       totalEventsProcessed: series.allEvents.length,
-      movedCount,
-      deletedCount,
+      markedCount,
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
-}
-
-/**
- * Build a description for a series date merged event.
- */
-function buildSeriesDateDescription(group: DuplicateGroup, series: SeriesGroup): string {
-  const lines = [
-    `Merged from ${group.events.length} individual signups:`,
-    "",
-    ...group.attendees.map((name, i) => `${i + 1}. ${name}`),
-    "",
-    `Original class: ${series.baseTitle}`,
-    `Series dates: ${series.datePattern}`,
-    `Merged on: ${new Date().toLocaleDateString()}`,
-  ];
-
-  return lines.join("\n");
 }

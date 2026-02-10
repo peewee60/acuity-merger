@@ -42,24 +42,16 @@ export interface SeriesGroup {
 export interface MergeResult {
   success: boolean;
   createdEventId?: string;
-  movedCount: number;
-  deletedCount: number;
+  markedCount: number;
   error?: string;
 }
 
 // Result of series merge operation
 export interface SeriesMergeResult {
   success: boolean;
-  createdEventIds: string[];  // One per date merged
-  mergedDates: number;        // Number of dates successfully merged
+  createdEventId?: string;      // Single recurring event
+  mergedDates: number;           // Number of dates in the series
   totalEventsProcessed: number;
-  movedCount: number;
-  deletedCount: number;
+  markedCount: number;
   error?: string;
-}
-
-// User settings stored in localStorage
-export interface UserSettings {
-  archiveCalendarId?: string;
-  archiveCalendarName?: string;
 }

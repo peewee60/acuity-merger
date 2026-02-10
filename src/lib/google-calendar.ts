@@ -45,10 +45,12 @@ export async function getEvents(
   const calendarName = calendarInfo.data.summary || "Calendar";
 
   const ACUITY_MARKER = "(created by Acuity Scheduling)";
+  const MERGED_MARKER = "[MERGED]";
 
   return (response.data.items || [])
     .filter((item) => item.status !== "cancelled")
     .filter((item) => item.description?.includes(ACUITY_MARKER))
+    .filter((item) => !item.description?.includes(MERGED_MARKER))
     .map((item) => convertEvent(item, calendarId, calendarName));
 }
 
@@ -112,29 +114,68 @@ export async function createEvent(
   return response.data.id || "";
 }
 
-// Delete an event
-export async function deleteEvent(
+// Create a recurring event using RDATE (explicit date list)
+export async function createRecurringEvent(
+  accessToken: string,
+  calendarId: string,
+  event: Omit<CalendarEvent, "id" | "calendarId" | "calendarName">,
+  recurrence: string[]
+): Promise<string> {
+  const calendar = getCalendarClient(accessToken);
+
+  const gEvent: calendar_v3.Schema$Event = {
+    summary: event.title,
+    description: event.description,
+    recurrence,
+  };
+
+  if (event.allDay) {
+    gEvent.start = { date: formatDate(event.start) };
+    gEvent.end = { date: formatDate(event.end) };
+  } else {
+    gEvent.start = { dateTime: event.start.toISOString(), timeZone: "UTC" };
+    gEvent.end = { dateTime: event.end.toISOString(), timeZone: "UTC" };
+  }
+
+  const response = await calendar.events.insert({
+    calendarId,
+    requestBody: gEvent,
+  });
+
+  return response.data.id || "";
+}
+
+// Mark an event as merged by prepending [MERGED] to its description
+export async function markEventAsMerged(
   accessToken: string,
   calendarId: string,
   eventId: string
 ): Promise<void> {
   const calendar = getCalendarClient(accessToken);
-  await calendar.events.delete({ calendarId, eventId });
-}
+  const existing = await calendar.events.get({ calendarId, eventId });
+  const currentDescription = existing.data.description || "";
 
-// Move an event to a different calendar
-export async function moveEvent(
-  accessToken: string,
-  sourceCalendarId: string,
-  eventId: string,
-  destinationCalendarId: string
-): Promise<void> {
-  const calendar = getCalendarClient(accessToken);
-  await calendar.events.move({
-    calendarId: sourceCalendarId,
-    eventId,
-    destination: destinationCalendarId,
-  });
+  // Check calendar access role
+  const calEntry = await calendar.calendarList.get({ calendarId });
+  console.log(`  Calendar access role: ${calEntry.data.accessRole}`);
+  console.log(`  Event organizer: ${existing.data.organizer?.email}, creator: ${existing.data.creator?.email}`);
+  console.log(`  Event status: ${existing.data.status}, locked: ${existing.data.locked}`);
+
+  if (!currentDescription.includes("[MERGED]")) {
+    try {
+      await calendar.events.patch({
+        calendarId,
+        eventId,
+        requestBody: {
+          description: `[MERGED]\n${currentDescription}`,
+        },
+      });
+    } catch (err: unknown) {
+      const gaxiosErr = err as { response?: { data?: unknown }; message?: string };
+      console.error(`  Patch error details:`, JSON.stringify(gaxiosErr.response?.data, null, 2));
+      throw err;
+    }
+  }
 }
 
 // Format date as YYYY-MM-DD for all-day events
