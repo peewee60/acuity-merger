@@ -1,10 +1,10 @@
-import type { DuplicateGroup, MergeResult, SeriesGroup, SeriesMergeResult } from "@/types";
+import type { CalendarEvent, DuplicateGroup, MergeResult, SeriesGroup, SeriesMergeResult } from "@/types";
 import { createEvent, createRecurringEvent, markEventAsMerged } from "./google-calendar";
 
 /**
  * Execute a merge operation:
  * 1. Create the merged event on the target calendar
- * 2. Mark all originals as merged (keeps them in place so Acuity won't re-create)
+ * 2. Return immediately — marking originals is handled by the caller via after()
  */
 export async function executeMerge(
   accessToken: string,
@@ -18,7 +18,6 @@ export async function executeMerge(
   const firstEvent = group.events[0];
 
   try {
-    // 1. Create the merged event on the target calendar
     const createdEventId = await createEvent(accessToken, targetCalendarId, {
       title: customTitle || group.mergedTitle,
       description: buildMergedDescription(group),
@@ -27,23 +26,10 @@ export async function executeMerge(
       allDay: firstEvent.allDay,
     });
 
-    // 2. Mark all originals as merged
-    let markedCount = 0;
-    for (const original of group.events) {
-      try {
-        console.log(`Marking event ${original.id} on calendar ${original.calendarId} as merged...`);
-        await markEventAsMerged(accessToken, original.calendarId, original.id);
-        markedCount++;
-        console.log(`  -> Marked successfully`);
-      } catch (err) {
-        console.error(`  -> Failed to mark event ${original.id}:`, err);
-      }
-    }
-
     return {
       success: true,
       createdEventId,
-      markedCount,
+      markedCount: 0,
     };
   } catch (error) {
     return {
@@ -81,14 +67,12 @@ function buildRecurrenceRDates(
 ): string[] {
   if (sortedDates.length <= 1) return [];
 
-  // Extract the time portion from the reference event
   const refTime = referenceEvent.start;
   const hours = refTime.getUTCHours().toString().padStart(2, "0");
   const minutes = refTime.getUTCMinutes().toString().padStart(2, "0");
   const seconds = refTime.getUTCSeconds().toString().padStart(2, "0");
   const timePart = `T${hours}${minutes}${seconds}Z`;
 
-  // Build RDATE values for all dates after the first
   const rdateValues = sortedDates.slice(1).map((d) => {
     const year = d.getUTCFullYear();
     const month = (d.getUTCMonth() + 1).toString().padStart(2, "0");
@@ -102,24 +86,19 @@ function buildRecurrenceRDates(
 /**
  * Execute a series merge operation:
  * 1. Create a single recurring event with RDATE rules covering all dates
- * 2. Mark all originals as merged
+ * 2. Return immediately — marking originals is handled by the caller via after()
  */
 export async function executeSeriesMerge(
   accessToken: string,
   series: SeriesGroup,
   targetCalendarId: string
 ): Promise<SeriesMergeResult> {
-  let markedCount = 0;
-
-  // Sort dates chronologically
   const sortedDateStrs = Object.keys(series.eventsByDate).sort();
   const sortedDates = sortedDateStrs.map((d) => new Date(d + "T00:00:00Z"));
 
-  // Use first date's group as anchor
   const firstGroup = series.eventsByDate[sortedDateStrs[0]];
   const anchorEvent = firstGroup.events[0];
 
-  // Build combined description with all attendees and per-date breakdown
   const descriptionLines = [
     `Recurring series: ${series.baseTitle}`,
     `${series.dates.length} dates | ${series.allAttendees.length} attendees`,
@@ -146,10 +125,8 @@ export async function executeSeriesMerge(
   const mergedTitle = `${series.baseTitle} (${series.allAttendees.length} attendees)`;
 
   try {
-    // Build recurrence rules
     const recurrence = buildRecurrenceRDates(sortedDates, anchorEvent);
 
-    // Create the recurring event (or single event if only 1 date)
     let createdEventId: string;
     const eventData = {
       title: mergedTitle,
@@ -174,32 +151,40 @@ export async function executeSeriesMerge(
       );
     }
 
-    // Mark all originals as merged
-    for (const original of series.allEvents) {
-      try {
-        console.log(`Marking event ${original.id} on calendar ${original.calendarId} as merged...`);
-        await markEventAsMerged(accessToken, original.calendarId, original.id);
-        markedCount++;
-        console.log(`  -> Marked successfully`);
-      } catch (err) {
-        console.error(`  -> Failed to mark event ${original.id}:`, err);
-      }
-    }
-
     return {
       success: true,
       createdEventId,
       mergedDates: sortedDates.length,
       totalEventsProcessed: series.allEvents.length,
-      markedCount,
+      markedCount: 0,
     };
   } catch (error) {
     return {
       success: false,
       mergedDates: 0,
       totalEventsProcessed: series.allEvents.length,
-      markedCount,
+      markedCount: 0,
       error: error instanceof Error ? error.message : "Unknown error",
     };
+  }
+}
+
+/**
+ * Mark original events as merged in the background.
+ * Uses Promise.allSettled for parallel execution.
+ */
+export async function markOriginals(
+  accessToken: string,
+  events: CalendarEvent[]
+): Promise<void> {
+  const results = await Promise.allSettled(
+    events.map((event) =>
+      markEventAsMerged(accessToken, event.calendarId, event.id)
+    )
+  );
+
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length > 0) {
+    console.error(`Failed to mark ${failed.length}/${events.length} events as merged`);
   }
 }

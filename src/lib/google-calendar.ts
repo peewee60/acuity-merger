@@ -155,26 +155,14 @@ export async function markEventAsMerged(
   const existing = await calendar.events.get({ calendarId, eventId });
   const currentDescription = existing.data.description || "";
 
-  // Check calendar access role
-  const calEntry = await calendar.calendarList.get({ calendarId });
-  console.log(`  Calendar access role: ${calEntry.data.accessRole}`);
-  console.log(`  Event organizer: ${existing.data.organizer?.email}, creator: ${existing.data.creator?.email}`);
-  console.log(`  Event status: ${existing.data.status}, locked: ${existing.data.locked}`);
-
   if (!currentDescription.includes("[MERGED]")) {
-    try {
-      await calendar.events.patch({
-        calendarId,
-        eventId,
-        requestBody: {
-          description: `[MERGED]\n${currentDescription}`,
-        },
-      });
-    } catch (err: unknown) {
-      const gaxiosErr = err as { response?: { data?: unknown }; message?: string };
-      console.error(`  Patch error details:`, JSON.stringify(gaxiosErr.response?.data, null, 2));
-      throw err;
-    }
+    await calendar.events.patch({
+      calendarId,
+      eventId,
+      requestBody: {
+        description: `[MERGED]\n${currentDescription}`,
+      },
+    });
   }
 }
 

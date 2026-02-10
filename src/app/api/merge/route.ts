@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
-import { executeMerge, executeSeriesMerge } from "@/lib/merge-executor";
+import { executeMerge, executeSeriesMerge, markOriginals } from "@/lib/merge-executor";
 import type { DuplicateGroup, SeriesGroup } from "@/types";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -67,6 +67,10 @@ export async function POST(request: NextRequest) {
       );
 
       if (result.success) {
+        // Mark originals in the background after the response is sent
+        after(async () => {
+          await markOriginals(session.accessToken!, seriesWithDates.allEvents);
+        });
         return NextResponse.json(result);
       } else {
         return NextResponse.json(
@@ -101,6 +105,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.success) {
+      // Mark originals in the background after the response is sent
+      after(async () => {
+        await markOriginals(session.accessToken!, groupWithDates.events);
+      });
       return NextResponse.json(result);
     } else {
       return NextResponse.json(
