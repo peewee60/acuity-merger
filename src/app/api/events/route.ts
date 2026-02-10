@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const calendarId = searchParams.get("calendarId");
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
+  const showMerged = searchParams.get("showMerged") === "true";
 
   if (!calendarId || !startDate || !endDate) {
     return NextResponse.json(
@@ -27,7 +28,8 @@ export async function GET(request: NextRequest) {
       session.accessToken,
       calendarId,
       new Date(startDate),
-      new Date(endDate)
+      new Date(endDate),
+      { includeMerged: showMerged }
     );
 
     // Detect series first (same class across multiple dates)

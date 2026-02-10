@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState(false);
   const [activeTab, setActiveTab] = useState<"series" | "duplicates">("series");
+  const [showMerged, setShowMerged] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -80,6 +81,7 @@ export default function DashboardPage() {
         calendarId: selectedCalendarId,
         startDate,
         endDate,
+        ...(showMerged && { showMerged: "true" }),
       });
 
       const res = await fetch(`/api/events?${params}`);
@@ -102,7 +104,7 @@ export default function DashboardPage() {
     } finally {
       setScanLoading(false);
     }
-  }, [selectedCalendarId, startDate, endDate]);
+  }, [selectedCalendarId, startDate, endDate, showMerged]);
 
   const handleMerge = useCallback(
     async (group: DuplicateGroup, customTitle?: string) => {
@@ -386,6 +388,18 @@ export default function DashboardPage() {
               onStartChange={setStartDate}
               onEndChange={setEndDate}
             />
+
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showMerged}
+                onChange={(e) => setShowMerged(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500/50 cursor-pointer"
+              />
+              <span className="text-sm text-slate-400">
+                Include already-merged events
+              </span>
+            </label>
 
             <button
               onClick={handleScan}

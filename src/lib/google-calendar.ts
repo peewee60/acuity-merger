@@ -28,7 +28,8 @@ export async function getEvents(
   accessToken: string,
   calendarId: string,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  options?: { includeMerged?: boolean }
 ): Promise<CalendarEvent[]> {
   const calendar = getCalendarClient(accessToken);
 
@@ -47,11 +48,15 @@ export async function getEvents(
   const ACUITY_MARKER = "(created by Acuity Scheduling)";
   const MERGED_MARKER = "[MERGED]";
 
-  return (response.data.items || [])
+  let items = (response.data.items || [])
     .filter((item) => item.status !== "cancelled")
-    .filter((item) => item.description?.includes(ACUITY_MARKER))
-    .filter((item) => !item.description?.includes(MERGED_MARKER))
-    .map((item) => convertEvent(item, calendarId, calendarName));
+    .filter((item) => item.description?.includes(ACUITY_MARKER));
+
+  if (!options?.includeMerged) {
+    items = items.filter((item) => !item.description?.includes(MERGED_MARKER));
+  }
+
+  return items.map((item) => convertEvent(item, calendarId, calendarName));
 }
 
 // Convert Google Calendar event to our type
