@@ -85,6 +85,15 @@ function convertEvent(
   };
 }
 
+// Get the timezone configured for a calendar
+async function getCalendarTimeZone(
+  calendar: calendar_v3.Calendar,
+  calendarId: string
+): Promise<string> {
+  const res = await calendar.calendars.get({ calendarId });
+  return res.data.timeZone || "UTC";
+}
+
 // Create a new event
 export async function createEvent(
   accessToken: string,
@@ -92,6 +101,7 @@ export async function createEvent(
   event: Omit<CalendarEvent, "id" | "calendarId" | "calendarName">
 ): Promise<string> {
   const calendar = getCalendarClient(accessToken);
+  const timeZone = await getCalendarTimeZone(calendar, calendarId);
 
   const gEvent: calendar_v3.Schema$Event = {
     summary: event.title,
@@ -102,8 +112,8 @@ export async function createEvent(
     gEvent.start = { date: formatDate(event.start) };
     gEvent.end = { date: formatDate(event.end) };
   } else {
-    gEvent.start = { dateTime: event.start.toISOString() };
-    gEvent.end = { dateTime: event.end.toISOString() };
+    gEvent.start = { dateTime: event.start.toISOString(), timeZone };
+    gEvent.end = { dateTime: event.end.toISOString(), timeZone };
   }
 
   const response = await calendar.events.insert({
@@ -122,6 +132,7 @@ export async function createRecurringEvent(
   recurrence: string[]
 ): Promise<string> {
   const calendar = getCalendarClient(accessToken);
+  const timeZone = await getCalendarTimeZone(calendar, calendarId);
 
   const gEvent: calendar_v3.Schema$Event = {
     summary: event.title,
@@ -133,8 +144,8 @@ export async function createRecurringEvent(
     gEvent.start = { date: formatDate(event.start) };
     gEvent.end = { date: formatDate(event.end) };
   } else {
-    gEvent.start = { dateTime: event.start.toISOString(), timeZone: "UTC" };
-    gEvent.end = { dateTime: event.end.toISOString(), timeZone: "UTC" };
+    gEvent.start = { dateTime: event.start.toISOString(), timeZone };
+    gEvent.end = { dateTime: event.end.toISOString(), timeZone };
   }
 
   const response = await calendar.events.insert({
