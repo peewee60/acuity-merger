@@ -1,28 +1,21 @@
 "use client";
 
-import type { DuplicateGroup, CalendarInfo } from "@/types";
+import type { DuplicateGroup } from "@/types";
 import { useState } from "react";
 
 interface DuplicateListProps {
   groups: DuplicateGroup[];
-  calendars: CalendarInfo[];
-  onMerge: (
-    group: DuplicateGroup,
-    customTitle?: string,
-    archiveCalendarId?: string
-  ) => Promise<void>;
+  onMerge: (group: DuplicateGroup, customTitle?: string) => Promise<void>;
   isLoading: boolean;
 }
 
 export function DuplicateList({
   groups,
-  calendars,
   onMerge,
   isLoading,
 }: DuplicateListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
-  const [archiveCalendarId, setArchiveCalendarId] = useState<string>("");
   const [mergingIndex, setMergingIndex] = useState<number | null>(null);
 
   if (groups.length === 0) {
@@ -44,8 +37,7 @@ export function DuplicateList({
     try {
       await onMerge(
         group,
-        editingTitle !== group.mergedTitle ? editingTitle : undefined,
-        archiveCalendarId || undefined
+        editingTitle !== group.mergedTitle ? editingTitle : undefined
       );
       setExpandedIndex(null);
     } finally {
@@ -88,27 +80,6 @@ export function DuplicateList({
               Review and merge duplicate events
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <label
-            htmlFor="archive-calendar"
-            className="text-sm text-slate-400 whitespace-nowrap"
-          >
-            After merge:
-          </label>
-          <select
-            id="archive-calendar"
-            value={archiveCalendarId}
-            onChange={(e) => setArchiveCalendarId(e.target.value)}
-            className="input-field rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="">Delete originals</option>
-            {calendars.map((cal) => (
-              <option key={cal.id} value={cal.id}>
-                Move to {cal.name}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 

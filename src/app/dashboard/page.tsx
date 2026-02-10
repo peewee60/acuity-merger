@@ -16,6 +16,7 @@ export default function DashboardPage() {
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [calendarsLoading, setCalendarsLoading] = useState(true);
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
+  const [targetCalendarId, setTargetCalendarId] = useState("");
 
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -104,11 +105,11 @@ export default function DashboardPage() {
   }, [selectedCalendarId, startDate, endDate]);
 
   const handleMerge = useCallback(
-    async (
-      group: DuplicateGroup,
-      customTitle?: string,
-      archiveCalendarId?: string
-    ) => {
+    async (group: DuplicateGroup, customTitle?: string) => {
+      if (!targetCalendarId) {
+        setError("Please select a target calendar");
+        return;
+      }
       setError(null);
       setMergeLoading(true);
 
@@ -119,7 +120,7 @@ export default function DashboardPage() {
           body: JSON.stringify({
             group,
             customTitle,
-            archiveCalendarId,
+            targetCalendarId,
           }),
         });
 
@@ -133,7 +134,7 @@ export default function DashboardPage() {
         );
 
         setSuccessMessage(
-          `Successfully merged ${group.events.length} events into "${customTitle || group.mergedTitle}"`
+          `Successfully merged ${group.events.length} events into "${customTitle || group.mergedTitle}". Originals marked as merged.`
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to merge events");
@@ -142,11 +143,15 @@ export default function DashboardPage() {
         setMergeLoading(false);
       }
     },
-    []
+    [targetCalendarId]
   );
 
   const handleMergeSeries = useCallback(
-    async (series: SeriesGroup, archiveCalendarId?: string) => {
+    async (series: SeriesGroup) => {
+      if (!targetCalendarId) {
+        setError("Please select a target calendar");
+        return;
+      }
       setError(null);
       setMergeLoading(true);
 
@@ -156,7 +161,7 @@ export default function DashboardPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             series,
-            archiveCalendarId,
+            targetCalendarId,
           }),
         });
 
@@ -170,7 +175,7 @@ export default function DashboardPage() {
         );
 
         setSuccessMessage(
-          `Successfully merged ${series.allEvents.length} events across ${series.dates.length} dates`
+          `Created recurring event for "${series.baseTitle}" across ${series.dates.length} dates. ${series.allEvents.length} originals marked as merged.`
         );
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to merge series");
@@ -179,7 +184,7 @@ export default function DashboardPage() {
         setMergeLoading(false);
       }
     },
-    []
+    [targetCalendarId]
   );
 
   if (status === "loading") {
@@ -347,7 +352,33 @@ export default function DashboardPage() {
               selectedId={selectedCalendarId}
               onChange={setSelectedCalendarId}
               isLoading={calendarsLoading}
+              label="Source Calendar (Acuity sync)"
             />
+
+            <div>
+              <label
+                htmlFor="target-calendar-select"
+                className="label block mb-2"
+              >
+                Target Calendar (merged events go here)
+              </label>
+              <select
+                id="target-calendar-select"
+                value={targetCalendarId}
+                onChange={(e) => setTargetCalendarId(e.target.value)}
+                className="w-full input-field rounded-xl px-4 py-3 text-base cursor-pointer"
+              >
+                <option value="">Choose target calendar...</option>
+                {calendars
+                  .filter((cal) => cal.id !== selectedCalendarId)
+                  .map((cal) => (
+                    <option key={cal.id} value={cal.id}>
+                      {cal.name}
+                      {cal.primary ? " (Primary)" : ""}
+                    </option>
+                  ))}
+              </select>
+            </div>
 
             <DateRangePicker
               startDate={startDate}
@@ -498,7 +529,6 @@ export default function DashboardPage() {
                     seriesGroups.length > 0 ? (
                       <SeriesList
                         series={seriesGroups}
-                        calendars={calendars}
                         onMergeSeries={handleMergeSeries}
                         isLoading={mergeLoading}
                       />
@@ -513,7 +543,6 @@ export default function DashboardPage() {
                   ) : duplicateGroups.length > 0 ? (
                     <DuplicateList
                       groups={duplicateGroups}
-                      calendars={calendars}
                       onMerge={handleMerge}
                       isLoading={mergeLoading}
                     />

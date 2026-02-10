@@ -12,12 +12,19 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { group, series, archiveCalendarId, customTitle } = body as {
+    const { group, series, targetCalendarId, customTitle } = body as {
       group?: DuplicateGroup;
       series?: SeriesGroup;
-      archiveCalendarId?: string;
+      targetCalendarId?: string;
       customTitle?: string;
     };
+
+    if (!targetCalendarId) {
+      return NextResponse.json(
+        { error: "Target calendar is required" },
+        { status: 400 }
+      );
+    }
 
     // Handle series merge
     if (series) {
@@ -56,7 +63,7 @@ export async function POST(request: NextRequest) {
       const result = await executeSeriesMerge(
         session.accessToken,
         seriesWithDates,
-        { archiveCalendarId }
+        targetCalendarId
       );
 
       if (result.success) {
@@ -89,7 +96,7 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await executeMerge(session.accessToken, groupWithDates, {
-      archiveCalendarId,
+      targetCalendarId,
       customTitle,
     });
 

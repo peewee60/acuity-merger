@@ -1,26 +1,20 @@
 "use client";
 
-import type { SeriesGroup, DuplicateGroup, CalendarInfo } from "@/types";
+import type { SeriesGroup } from "@/types";
 import { useState } from "react";
 
 interface SeriesListProps {
   series: SeriesGroup[];
-  calendars: CalendarInfo[];
-  onMergeSeries: (
-    series: SeriesGroup,
-    archiveCalendarId?: string
-  ) => Promise<void>;
+  onMergeSeries: (series: SeriesGroup) => Promise<void>;
   isLoading: boolean;
 }
 
 export function SeriesList({
   series,
-  calendars,
   onMergeSeries,
   isLoading,
 }: SeriesListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [archiveCalendarId, setArchiveCalendarId] = useState<string>("");
   const [mergingIndex, setMergingIndex] = useState<number | null>(null);
 
   if (series.length === 0) {
@@ -34,7 +28,7 @@ export function SeriesList({
   const handleMerge = async (seriesGroup: SeriesGroup, index: number) => {
     setMergingIndex(index);
     try {
-      await onMergeSeries(seriesGroup, archiveCalendarId || undefined);
+      await onMergeSeries(seriesGroup);
       setExpandedIndex(null);
     } finally {
       setMergingIndex(null);
@@ -75,27 +69,6 @@ export function SeriesList({
               Multi-date series with duplicates to merge
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <label
-            htmlFor="series-archive-calendar"
-            className="text-sm text-slate-400 whitespace-nowrap"
-          >
-            After merge:
-          </label>
-          <select
-            id="series-archive-calendar"
-            value={archiveCalendarId}
-            onChange={(e) => setArchiveCalendarId(e.target.value)}
-            className="input-field rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="">Delete originals</option>
-            {calendars.map((cal) => (
-              <option key={cal.id} value={cal.id}>
-                Move to {cal.name}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -259,7 +232,7 @@ export function SeriesList({
                 <button
                   onClick={() => handleMerge(seriesGroup, index)}
                   disabled={isLoading || mergingIndex !== null}
-                  className="w-full btn-primary py-4 px-5 rounded-xl text-base cursor-pointer disabled:cursor-not-allowed"
+                  className="w-full btn-primary py-4 px-5 rounded-xl text-base cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {mergingIndex === index ? (
                     <span className="flex items-center justify-center gap-2">
@@ -284,7 +257,7 @@ export function SeriesList({
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         />
                       </svg>
-                      Merging series...
+                      Merging into recurring series...
                     </span>
                   ) : (
                     <span className="flex items-center justify-center gap-2">
@@ -301,8 +274,7 @@ export function SeriesList({
                           d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
                         />
                       </svg>
-                      Merge {seriesGroup.allEvents.length} events across{" "}
-                      {seriesGroup.dates.length} dates
+                      Merge into recurring series
                     </span>
                   )}
                 </button>

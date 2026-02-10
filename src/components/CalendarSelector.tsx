@@ -7,6 +7,7 @@ interface CalendarSelectorProps {
   selectedId: string;
   onChange: (id: string) => void;
   isLoading: boolean;
+  label?: string;
 }
 
 export function CalendarSelector({
@@ -14,11 +15,12 @@ export function CalendarSelector({
   selectedId,
   onChange,
   isLoading,
+  label = "Calendar",
 }: CalendarSelectorProps) {
   if (isLoading) {
     return (
       <div>
-        <div className="label mb-2">Calendar</div>
+        <div className="label mb-2">{label}</div>
         <div className="h-12 skeleton rounded-xl" />
       </div>
     );
@@ -27,7 +29,7 @@ export function CalendarSelector({
   return (
     <div>
       <label htmlFor="calendar-select" className="label block mb-2">
-        Calendar
+        {label}
       </label>
       <div className="relative">
         <select
