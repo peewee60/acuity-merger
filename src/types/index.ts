@@ -49,7 +49,7 @@ export interface MergeResult {
 // Result of series merge operation
 export interface SeriesMergeResult {
   success: boolean;
-  createdEventId?: string;      // Single recurring event
+  createdEventIds: string[];     // Recurring event or individual events
   mergedDates: number;           // Number of dates in the series
   totalEventsProcessed: number;
   markedCount: number;

@@ -57,30 +57,38 @@ function buildMergedDescription(group: DuplicateGroup): string {
 }
 
 /**
- * Build RDATE recurrence values for dates after the first.
- * Returns e.g. ["RDATE:20241208T191500Z,20241215T191500Z"]
- * Returns empty array if only 1 date (no recurrence needed).
+ * Detect a regular interval between sorted dates and build an RRULE.
+ * Returns e.g. ["RRULE:FREQ=WEEKLY;COUNT=5"] for weekly patterns.
+ * Returns null if dates don't follow a uniform pattern (fallback to individual events).
+ * Returns null if only 1 date (no recurrence needed).
  */
-function buildRecurrenceRDates(
-  sortedDates: Date[],
-  referenceEvent: { start: Date }
-): string[] {
-  if (sortedDates.length <= 1) return [];
+function buildRecurrence(sortedDates: Date[]): string[] | null {
+  if (sortedDates.length <= 1) return null;
 
-  const refTime = referenceEvent.start;
-  const hours = refTime.getUTCHours().toString().padStart(2, "0");
-  const minutes = refTime.getUTCMinutes().toString().padStart(2, "0");
-  const seconds = refTime.getUTCSeconds().toString().padStart(2, "0");
-  const timePart = `T${hours}${minutes}${seconds}Z`;
+  // Calculate intervals between consecutive dates in days
+  const intervalDays: number[] = [];
+  for (let i = 1; i < sortedDates.length; i++) {
+    const diffMs = sortedDates[i].getTime() - sortedDates[i - 1].getTime();
+    const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    intervalDays.push(days);
+  }
 
-  const rdateValues = sortedDates.slice(1).map((d) => {
-    const year = d.getUTCFullYear();
-    const month = (d.getUTCMonth() + 1).toString().padStart(2, "0");
-    const day = d.getUTCDate().toString().padStart(2, "0");
-    return `${year}${month}${day}${timePart}`;
-  });
+  // Check all intervals are the same
+  const interval = intervalDays[0];
+  if (!intervalDays.every((d) => d === interval)) return null;
 
-  return [`RDATE:${rdateValues.join(",")}`];
+  // Map interval to RRULE frequency
+  if (interval === 7) {
+    return [`RRULE:FREQ=WEEKLY;COUNT=${sortedDates.length}`];
+  } else if (interval === 14) {
+    return [`RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=${sortedDates.length}`];
+  } else if (interval === 1) {
+    return [`RRULE:FREQ=DAILY;COUNT=${sortedDates.length}`];
+  } else if (interval % 7 === 0) {
+    return [`RRULE:FREQ=WEEKLY;INTERVAL=${interval / 7};COUNT=${sortedDates.length}`];
+  }
+
+  return null;
 }
 
 /**
@@ -125,9 +133,9 @@ export async function executeSeriesMerge(
   const mergedTitle = `${series.baseTitle} (${series.allAttendees.length} attendees)`;
 
   try {
-    const recurrence = buildRecurrenceRDates(sortedDates, anchorEvent);
+    const recurrence = buildRecurrence(sortedDates);
+    const createdEventIds: string[] = [];
 
-    let createdEventId: string;
     const eventData = {
       title: mergedTitle,
       description: descriptionLines.join("\n"),
@@ -136,24 +144,44 @@ export async function executeSeriesMerge(
       allDay: anchorEvent.allDay,
     };
 
-    if (recurrence.length > 0) {
-      createdEventId = await createRecurringEvent(
+    if (recurrence) {
+      // Dates follow a regular pattern — create a single RRULE recurring event
+      const id = await createRecurringEvent(
         accessToken,
         targetCalendarId,
         eventData,
         recurrence
       );
+      createdEventIds.push(id);
     } else {
-      createdEventId = await createEvent(
-        accessToken,
-        targetCalendarId,
-        eventData
+      // Irregular dates — create individual events per date
+      const duration = anchorEvent.end.getTime() - anchorEvent.start.getTime();
+
+      const results = await Promise.allSettled(
+        sortedDateStrs.map((dateStr) => {
+          const group = series.eventsByDate[dateStr];
+          const dateAnchor = group.events[0];
+          return createEvent(accessToken, targetCalendarId, {
+            ...eventData,
+            start: dateAnchor.start,
+            end: new Date(dateAnchor.start.getTime() + duration),
+          });
+        })
       );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") createdEventIds.push(r.value);
+      }
+
+      const failed = results.filter((r) => r.status === "rejected").length;
+      if (failed > 0) {
+        console.error(`Failed to create ${failed}/${sortedDateStrs.length} individual series events`);
+      }
     }
 
     return {
       success: true,
-      createdEventId,
+      createdEventIds,
       mergedDates: sortedDates.length,
       totalEventsProcessed: series.allEvents.length,
       markedCount: 0,
@@ -161,6 +189,7 @@ export async function executeSeriesMerge(
   } catch (error) {
     return {
       success: false,
+      createdEventIds: [],
       mergedDates: 0,
       totalEventsProcessed: series.allEvents.length,
       markedCount: 0,
