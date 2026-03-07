@@ -140,7 +140,9 @@ export default function DashboardPage() {
         }
 
         setDuplicateGroups((prev) =>
-          prev.filter((g) => g.startTime !== group.startTime)
+          prev.filter(
+            (g) => !(String(g.startTime) === String(group.startTime) && g.baseTitle === group.baseTitle)
+          )
         );
 
         setSuccessMessage(
