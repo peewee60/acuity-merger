@@ -2,6 +2,9 @@
 
 import type { DuplicateGroup } from "@/types";
 import { useState } from "react";
+import { formatMergedTitle } from "@/lib/duplicate-detector";
+
+type TitleFormat = "full" | "count-only" | "names-only";
 
 interface DuplicateListProps {
   groups: DuplicateGroup[];
@@ -16,6 +19,7 @@ export function DuplicateList({
 }: DuplicateListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [editingTitle, setEditingTitle] = useState<string>("");
+  const [titleFormat, setTitleFormat] = useState<TitleFormat>("full");
   const [mergingIndex, setMergingIndex] = useState<number | null>(null);
 
   if (groups.length === 0) {
@@ -26,10 +30,17 @@ export function DuplicateList({
     if (expandedIndex === index) {
       setExpandedIndex(null);
       setEditingTitle("");
+      setTitleFormat("full");
     } else {
       setExpandedIndex(index);
+      setTitleFormat("full");
       setEditingTitle(groups[index].mergedTitle);
     }
+  };
+
+  const handleFormatChange = (group: DuplicateGroup, format: TitleFormat) => {
+    setTitleFormat(format);
+    setEditingTitle(formatMergedTitle(group.baseTitle, group.attendees, format));
   };
 
   const handleMerge = async (group: DuplicateGroup, index: number) => {
@@ -188,6 +199,28 @@ export function DuplicateList({
                   <label className="label-caps block mb-3">
                     Merged Event Title
                   </label>
+                  <div className="flex gap-2 mb-3">
+                    {(
+                      [
+                        { value: "full", label: "Full" },
+                        { value: "count-only", label: "Count only" },
+                        { value: "names-only", label: "Names only" },
+                      ] as { value: TitleFormat; label: string }[]
+                    ).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleFormatChange(group, value)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                          titleFormat === value
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            : "bg-slate-700/50 text-slate-400 border-slate-600 hover:border-slate-500 hover:text-slate-300"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   <input
                     type="text"
                     value={editingTitle}
