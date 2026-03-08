@@ -1,5 +1,5 @@
 import type { CalendarEvent, DuplicateGroup, MergeResult, SeriesGroup, SeriesMergeResult } from "@/types";
-import { createEvent, createRecurringEvent, markEventAsMerged } from "./google-calendar";
+import { createEvent, createRecurringEvent, getCalendarTimeZone, markEventAsMerged } from "./google-calendar";
 
 /**
  * Execute a merge operation:
@@ -133,6 +133,10 @@ export async function executeSeriesMerge(
   const mergedTitle = `${series.baseTitle} (${series.allAttendees.length} attendees)`;
 
   try {
+    // Fetch the calendar timezone once — avoids N redundant API calls when
+    // creating individual events in an irregular series.
+    const timeZone = await getCalendarTimeZone(accessToken, targetCalendarId);
+
     const recurrence = buildRecurrence(sortedDates);
     const createdEventIds: string[] = [];
 
@@ -150,7 +154,8 @@ export async function executeSeriesMerge(
         accessToken,
         targetCalendarId,
         eventData,
-        recurrence
+        recurrence,
+        timeZone
       );
       createdEventIds.push(id);
     } else {
@@ -165,7 +170,7 @@ export async function executeSeriesMerge(
             ...eventData,
             start: dateAnchor.start,
             end: new Date(dateAnchor.start.getTime() + duration),
-          });
+          }, timeZone);
         })
       );
 

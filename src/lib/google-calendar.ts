@@ -33,22 +33,34 @@ export async function getEvents(
 ): Promise<CalendarEvent[]> {
   const calendar = getCalendarClient(accessToken);
 
-  const response = await calendar.events.list({
-    calendarId,
-    timeMin: startDate.toISOString(),
-    timeMax: endDate.toISOString(),
-    singleEvents: true, // Expand recurring events
-    orderBy: "startTime",
-    maxResults: 500,
-  });
+  const [calendarInfo, allItems] = await Promise.all([
+    calendar.calendars.get({ calendarId }),
+    (async () => {
+      const collected: calendar_v3.Schema$Event[] = [];
+      let pageToken: string | undefined;
+      do {
+        const response = await calendar.events.list({
+          calendarId,
+          timeMin: startDate.toISOString(),
+          timeMax: endDate.toISOString(),
+          singleEvents: true, // Expand recurring events
+          orderBy: "startTime",
+          maxResults: 500,
+          pageToken,
+        });
+        collected.push(...(response.data.items || []));
+        pageToken = response.data.nextPageToken ?? undefined;
+      } while (pageToken);
+      return collected;
+    })(),
+  ]);
 
-  const calendarInfo = await calendar.calendars.get({ calendarId });
   const calendarName = calendarInfo.data.summary || "Calendar";
 
   const ACUITY_MARKER = "(created by Acuity Scheduling)";
   const MERGED_MARKER = "[MERGED]";
 
-  let items = (response.data.items || [])
+  let items = allItems
     .filter((item) => item.status !== "cancelled")
     .filter((item) => item.description?.includes(ACUITY_MARKER));
 
@@ -90,23 +102,27 @@ function convertEvent(
   };
 }
 
-// Get the timezone configured for a calendar
-async function getCalendarTimeZone(
-  calendar: calendar_v3.Calendar,
+// Get the timezone configured for a calendar.
+// Exported so callers can fetch it once and pass it to createEvent / createRecurringEvent.
+export async function getCalendarTimeZone(
+  accessToken: string,
   calendarId: string
 ): Promise<string> {
+  const calendar = getCalendarClient(accessToken);
   const res = await calendar.calendars.get({ calendarId });
   return res.data.timeZone || "UTC";
 }
 
-// Create a new event
+// Create a new event.
+// Pass `timeZone` to skip the extra calendars.get lookup when the caller already has it.
 export async function createEvent(
   accessToken: string,
   calendarId: string,
-  event: Omit<CalendarEvent, "id" | "calendarId" | "calendarName">
+  event: Omit<CalendarEvent, "id" | "calendarId" | "calendarName">,
+  timeZone?: string
 ): Promise<string> {
   const calendar = getCalendarClient(accessToken);
-  const timeZone = await getCalendarTimeZone(calendar, calendarId);
+  const tz = timeZone ?? await getCalendarTimeZone(accessToken, calendarId);
 
   const gEvent: calendar_v3.Schema$Event = {
     summary: event.title,
@@ -117,8 +133,8 @@ export async function createEvent(
     gEvent.start = { date: formatDate(event.start) };
     gEvent.end = { date: formatDate(event.end) };
   } else {
-    gEvent.start = { dateTime: event.start.toISOString(), timeZone };
-    gEvent.end = { dateTime: event.end.toISOString(), timeZone };
+    gEvent.start = { dateTime: event.start.toISOString(), timeZone: tz };
+    gEvent.end = { dateTime: event.end.toISOString(), timeZone: tz };
   }
 
   const response = await calendar.events.insert({
@@ -129,15 +145,17 @@ export async function createEvent(
   return response.data.id || "";
 }
 
-// Create a recurring event with RRULE recurrence
+// Create a recurring event with RRULE recurrence.
+// Pass `timeZone` to skip the extra calendars.get lookup when the caller already has it.
 export async function createRecurringEvent(
   accessToken: string,
   calendarId: string,
   event: Omit<CalendarEvent, "id" | "calendarId" | "calendarName">,
-  recurrence: string[]
+  recurrence: string[],
+  timeZone?: string
 ): Promise<string> {
   const calendar = getCalendarClient(accessToken);
-  const timeZone = await getCalendarTimeZone(calendar, calendarId);
+  const tz = timeZone ?? await getCalendarTimeZone(accessToken, calendarId);
 
   const gEvent: calendar_v3.Schema$Event = {
     summary: event.title,
@@ -149,8 +167,8 @@ export async function createRecurringEvent(
     gEvent.start = { date: formatDate(event.start) };
     gEvent.end = { date: formatDate(event.end) };
   } else {
-    gEvent.start = { dateTime: event.start.toISOString(), timeZone };
-    gEvent.end = { dateTime: event.end.toISOString(), timeZone };
+    gEvent.start = { dateTime: event.start.toISOString(), timeZone: tz };
+    gEvent.end = { dateTime: event.end.toISOString(), timeZone: tz };
   }
 
   const response = await calendar.events.insert({
