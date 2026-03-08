@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { handleApiError } from "@/lib/api-error";
 import { executeMerge, executeSeriesMerge, markOriginals } from "@/lib/merge-executor";
 import type { DuplicateGroup, SeriesGroup } from "@/types";
-import { after, NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   const session = await auth();
@@ -68,11 +68,8 @@ export async function POST(request: NextRequest) {
       );
 
       if (result.success) {
-        // Mark originals in the background after the response is sent
-        after(async () => {
-          await markOriginals(session.accessToken!, seriesWithDates.allEvents);
-        });
-        return NextResponse.json(result);
+        const { markedCount, failedCount } = await markOriginals(session.accessToken!, seriesWithDates.allEvents);
+        return NextResponse.json({ ...result, markedCount, markFailedCount: failedCount });
       } else {
         return NextResponse.json(
           { error: result.error || "Series merge failed" },
@@ -106,11 +103,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.success) {
-      // Mark originals in the background after the response is sent
-      after(async () => {
-        await markOriginals(session.accessToken!, groupWithDates.events);
-      });
-      return NextResponse.json(result);
+      const { markedCount, failedCount } = await markOriginals(session.accessToken!, groupWithDates.events);
+      return NextResponse.json({ ...result, markedCount, markFailedCount: failedCount });
     } else {
       return NextResponse.json(
         { error: result.error || "Merge failed" },

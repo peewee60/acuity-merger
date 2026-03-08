@@ -134,8 +134,9 @@ export default function DashboardPage() {
           }),
         });
 
+        const data = await res.json();
+
         if (!res.ok) {
-          const data = await res.json();
           throw new Error(data.error || "Merge failed");
         }
 
@@ -145,9 +146,18 @@ export default function DashboardPage() {
           )
         );
 
-        setSuccessMessage(
-          `Successfully merged ${group.events.length} events into "${customTitle || group.mergedTitle}". Originals marked as merged.`
-        );
+        const total = group.events.length;
+        const marked = data.markedCount ?? 0;
+        const markFailed = data.markFailedCount ?? 0;
+        if (markFailed > 0) {
+          setSuccessMessage(
+            `Merged ${total} events into "${customTitle || group.mergedTitle}". ${marked}/${total} originals marked — ${markFailed} could not be updated (check Google Calendar manually).`
+          );
+        } else {
+          setSuccessMessage(
+            `Successfully merged ${total} events into "${customTitle || group.mergedTitle}". ${marked} originals marked as merged.`
+          );
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to merge events");
         console.error(err);
@@ -177,8 +187,9 @@ export default function DashboardPage() {
           }),
         });
 
+        const data = await res.json();
+
         if (!res.ok) {
-          const data = await res.json();
           throw new Error(data.error || "Merge failed");
         }
 
@@ -186,9 +197,18 @@ export default function DashboardPage() {
           prev.filter((s) => s.seriesKey !== series.seriesKey)
         );
 
-        setSuccessMessage(
-          `Created recurring event for "${series.baseTitle}" across ${series.dates.length} dates. ${series.allEvents.length} originals marked as merged.`
-        );
+        const total = series.allEvents.length;
+        const marked = data.markedCount ?? 0;
+        const markFailed = data.markFailedCount ?? 0;
+        if (markFailed > 0) {
+          setSuccessMessage(
+            `Created recurring event for "${series.baseTitle}" across ${series.dates.length} dates. ${marked}/${total} originals marked — ${markFailed} could not be updated (check Google Calendar manually).`
+          );
+        } else {
+          setSuccessMessage(
+            `Created recurring event for "${series.baseTitle}" across ${series.dates.length} dates. ${total} originals marked as merged.`
+          );
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to merge series");
         console.error(err);
