@@ -43,6 +43,7 @@ export interface MergeResult {
   success: boolean;
   createdEventId?: string;
   markedCount: number;
+  markFailedCount?: number;
   error?: string;
 }
 
@@ -53,5 +54,6 @@ export interface SeriesMergeResult {
   mergedDates: number;           // Number of dates in the series
   totalEventsProcessed: number;
   markedCount: number;
+  markFailedCount?: number;
   error?: string;
 }
